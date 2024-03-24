@@ -61,7 +61,12 @@ bool Events::load()
 
 		const std::string& methodName = eventNode.attribute("method").as_string();
 		const int32_t event = scriptInterface.getMetaEvent(className, methodName);
-		if (className == "Creature") {
+		if (className == "Monster") {
+			if (methodName == "onSpawn") {
+				info.monsterOnSpawn = event;
+			}
+		}
+		else if (className == "Creature") {
 			if (methodName == "onChangeOutfit") {
 				info.creatureOnChangeOutfit = event;
 			} else if (methodName == "onAreaCombat") {

@@ -89,6 +89,18 @@ bool getGlobalBoolean(lua_State* L, const char* identifier, const bool defaultVa
 	return val != 0;
 }
 
+double getGlobalDouble(lua_State* L, const char* identifier, const double defaultValue) //pota
+{
+	lua_getglobal(L, identifier);
+	if (!lua_isnumber(L, -1)) {
+		return defaultValue;
+	}
+
+	double val = lua_tonumber(L, -1);
+	lua_pop(L, 1);
+	return val;
+}
+
 }
 
 bool ConfigManager::load()
@@ -168,6 +180,8 @@ bool ConfigManager::load()
 	string[LOCATION] = getGlobalString(L, "location", "");
 	string[MOTD] = getGlobalString(L, "motd", "");
 	string[WORLD_TYPE] = getGlobalString(L, "worldType", "pvp");
+	string[MONSTERLEVEL_PREFIX] = getGlobalString(L, "monsterPrefix", ""); //pota
+
 
 	integer[MAX_PLAYERS] = getGlobalNumber(L, "maxPlayers");
 	integer[PZ_LOCKED] = getGlobalNumber(L, "pzLocked", 60000);
@@ -197,6 +211,12 @@ bool ConfigManager::load()
 	integer[MAX_PACKETS_PER_SECOND] = getGlobalNumber(L, "maxPacketsPerSecond", 25);
 	integer[SERVER_SAVE_NOTIFY_DURATION] = getGlobalNumber(L, "serverSaveNotifyDuration", 5);
 	integer[YELL_MINIMUM_LEVEL] = getGlobalNumber(L, "yellMinimumLevel", 2);
+
+	decimal[MONSTERLEVEL_BONUSDMG] = getGlobalDouble(L, "monsterLevelDamage", 0.0); //pota
+	decimal[MONSTERLEVEL_BONUSEXP] = getGlobalDouble(L, "monsterLevelExp", 0.0); //pota
+	decimal[MONSTERLEVEL_BONUSSPEED] = getGlobalDouble(L, "monsterLevelSpeed", 0.0); //pota
+	decimal[MONSTERLEVEL_BONUSHEALTH] = getGlobalDouble(L, "monsterLevelHealth", 0.0); //pota
+	decimal[MONSTERLEVEL_BONUSLOOT] = getGlobalDouble(L, "monsterLevelLoot", 0.0); //pota
 
 	loaded = true;
 	lua_close(L);
@@ -239,4 +259,13 @@ bool ConfigManager::getBoolean(boolean_config_t what) const
 		return false;
 	}
 	return boolean[what];
+}
+
+double ConfigManager::getDouble(double_config_t what) const
+{
+	if (what >= LAST_DOUBLE_CONFIG) {
+		std::cout << "[Warning - ConfigManager::getDouble] Accessing invalid index: " << what << std::endl;
+		return 0.0;
+	}
+	return decimal[what];
 }

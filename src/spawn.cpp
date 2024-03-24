@@ -199,7 +199,7 @@ bool Spawn::isInSpawnZone(const Position& pos)
 
 bool Spawn::spawnMonster(uint32_t spawnId, MonsterType* mType, const Position& pos, Direction dir, bool startup /*= false*/)
 {
-	std::unique_ptr<Monster> monster_ptr(new Monster(mType));
+	std::unique_ptr<Monster> monster_ptr(new Monster(mType, 0, 0));
 	if (!g_events->eventMonsterOnSpawn(monster_ptr.get(), pos, startup, false)) {
 		return false;
 	}

@@ -583,6 +583,44 @@ bool Spell::configureSpell(const pugi::xml_node& node)
 	return true;
 }
 
+ReturnValue Spell::CreateIllusion(Creature* creature, const Outfit_t& outfit, int32_t time)
+{
+	ConditionOutfit* outfitCondition = new ConditionOutfit(CONDITIONID_COMBAT, CONDITION_OUTFIT, time);
+	outfitCondition->setOutfit(outfit);
+	creature->addCondition(outfitCondition);
+	return RETURNVALUE_NOERROR;
+}
+
+ReturnValue Spell::CreateIllusion(Creature* creature, const std::string& name, int32_t time)
+{
+	const auto mType = g_monsters.getMonsterType(name);
+	if (mType == nullptr) {
+		return RETURNVALUE_CREATUREDOESNOTEXIST;
+	}
+
+	Player* player = creature->getPlayer();
+	if (player && !player->hasFlag(PlayerFlag_CanIllusionAll)) {
+		if (!mType->info.isIllusionable) {
+			return RETURNVALUE_NOTPOSSIBLE;
+		}
+	}
+
+	return CreateIllusion(creature, mType->info.outfit, time);
+}
+
+ReturnValue Spell::CreateIllusion(Creature* creature, uint32_t itemId, int32_t time)
+{
+	const ItemType& it = Item::items[itemId];
+	if (it.id == 0) {
+		return RETURNVALUE_NOTPOSSIBLE;
+	}
+
+	Outfit_t outfit;
+	outfit.lookTypeEx = itemId;
+
+	return CreateIllusion(creature, outfit, time);
+}
+
 bool Spell::playerSpellCheck(Player* player) const
 {
 	if (player->hasFlag(PlayerFlag_CannotUseSpells)) {
@@ -1177,6 +1215,24 @@ bool RuneSpell::configureEvent(const pugi::xml_node& node)
 	return true;
 }
 
+bool RuneSpell::loadFunction(const pugi::xml_attribute& attr, bool isScripted)
+{
+	const char* functionName = attr.as_string();
+	if (strcasecmp(functionName, "chameleon") == 0) {
+		runeFunction = Illusion;
+	}
+	else if (strcasecmp(functionName, "convince") == 0) {
+		runeFunction = Convince;
+	}
+	else {
+		std::cout << "[Warning - RuneSpell::loadFunction] Function \"" << functionName << "\" does not exist." << std::endl;
+		return false;
+	}
+
+	scripted = false;
+	return true;
+}
+
 ReturnValue RuneSpell::canExecuteAction(const Player* player, const Position& toPos)
 {
 	if (player->hasFlag(PlayerFlag_CannotUseSpells)) {
@@ -1298,4 +1354,78 @@ bool RuneSpell::executeCastSpell(Creature* creature, const LuaVariant& var, bool
 	LuaScriptInterface::pushBoolean(L, isHotkey);
 
 	return scriptInterface->callFunction(3);
+}
+
+bool RuneSpell::Illusion(const RuneSpell*, Player* player, const Position& posTo)
+{
+	Thing* thing = g_game.internalGetThing(player, posTo, 0, 0, STACKPOS_MOVE);
+	if (!thing) {
+		player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	Item* illusionItem = thing->getItem();
+	if (!illusionItem || !illusionItem->isMoveable()) {
+		player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	ReturnValue ret = CreateIllusion(player, illusionItem->getID(), 200000);
+	if (ret != RETURNVALUE_NOERROR) {
+		player->sendCancelMessage(ret);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	g_game.addMagicEffect(player->getPosition(), CONST_ME_MAGIC_RED);
+	return true;
+}
+
+bool RuneSpell::Convince(const RuneSpell* spell, Player* player, const Position& posTo)
+{
+	if (!player->hasFlag(PlayerFlag_CanConvinceAll)) {
+		if (player->getSummonCount() >= 2) {
+			player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+			g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+			return false;
+		}
+	}
+
+	Thing* thing = g_game.internalGetThing(player, posTo, 0, 0, STACKPOS_LOOK);
+	if (!thing) {
+		player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	Creature* convinceCreature = thing->getCreature();
+	if (!convinceCreature) {
+		player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	uint32_t manaCost = 0;
+	if (convinceCreature->getMonster()) {
+		manaCost = convinceCreature->getMonster()->getManaCost();
+	}
+
+	if (!player->hasFlag(PlayerFlag_HasInfiniteMana) && player->getMana() < manaCost) {
+		player->sendCancelMessage(RETURNVALUE_NOTENOUGHMANA);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	if (!convinceCreature->convinceCreature(player)) {
+		player->sendCancelMessage(RETURNVALUE_NOTPOSSIBLE);
+		g_game.addMagicEffect(player->getPosition(), CONST_ME_POFF);
+		return false;
+	}
+
+	Spell::postCastSpell(player, manaCost, spell->getSoulCost());
+	g_game.updateCreatureType(convinceCreature);
+	g_game.addMagicEffect(player->getPosition(), CONST_ME_MAGIC_RED);
+	return true;
 }

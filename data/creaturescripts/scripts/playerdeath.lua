@@ -1,9 +1,9 @@
 local deathListEnabled = true
 local maxDeathRecords = 5
 
-function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+function onDeath(player, corpse, killer, mostDamageKiller, unjustified, mostDamageUnjustified)
 	local playerId = player:getId()
-	if nextUseStaminaTime[playerId] then
+	if nextUseStaminaTime[playerId] ~= nil then
 		nextUseStaminaTime[playerId] = nil
 	end
 
@@ -14,7 +14,7 @@ function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, m
 
 	local byPlayer = 0
 	local killerName
-	if killer then
+	if killer ~= nil then
 		if killer:isPlayer() then
 			byPlayer = 1
 		else
@@ -31,7 +31,7 @@ function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, m
 
 	local byPlayerMostDamage = 0
 	local mostDamageKillerName
-	if mostDamageKiller then
+	if mostDamageKiller ~= nil then
 		if mostDamageKiller:isPlayer() then
 			byPlayerMostDamage = 1
 		else
@@ -47,7 +47,7 @@ function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, m
 	end
 
 	local playerGuid = player:getGuid()
-	db.query("INSERT INTO `player_deaths` (`player_id`, `time`, `level`, `killed_by`, `is_player`, `mostdamage_by`, `mostdamage_is_player`, `unjustified`, `mostdamage_unjustified`) VALUES (" .. playerGuid .. ", " .. os.time() .. ", " .. player:getLevel() .. ", " .. db.escapeString(killerName) .. ", " .. byPlayer .. ", " .. db.escapeString(mostDamageName) .. ", " .. byPlayerMostDamage .. ", " .. (lastHitUnjustified and 1 or 0) .. ", " .. (mostDamageUnjustified and 1 or 0) .. ")")
+	db.query("INSERT INTO `player_deaths` (`player_id`, `time`, `level`, `killed_by`, `is_player`, `mostdamage_by`, `mostdamage_is_player`, `unjustified`, `mostdamage_unjustified`) VALUES (" .. playerGuid .. ", " .. os.time() .. ", " .. player:getLevel() .. ", " .. db.escapeString(killerName) .. ", " .. byPlayer .. ", " .. db.escapeString(mostDamageName) .. ", " .. byPlayerMostDamage .. ", " .. (unjustified and 1 or 0) .. ", " .. (mostDamageUnjustified and 1 or 0) .. ")")
 	local resultId = db.storeQuery("SELECT `player_id` FROM `player_deaths` WHERE `player_id` = " .. playerGuid)
 
 	local deathRecords = 0
@@ -76,7 +76,7 @@ function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, m
 				local warId = false
 				resultId = db.storeQuery("SELECT `id` FROM `guild_wars` WHERE `status` = 1 AND ((`guild1` = " .. killerGuild .. " AND `guild2` = " .. targetGuild .. ") OR (`guild1` = " .. targetGuild .. " AND `guild2` = " .. killerGuild .. "))")
 				if resultId ~= false then
-					warId = result.getNumber(resultId, "id")
+					warId = result.getDataInt(resultId, "id")
 					result.free(resultId)
 				end
 
@@ -86,4 +86,13 @@ function onDeath(player, corpse, killer, mostDamageKiller, lastHitUnjustified, m
 			end
 		end
 	end
+
+	if player:isOnDive() then
+		player:setStorageValue(storageDive, -1)
+	end
+
+	if player:isOnSurf() then
+		player:setStorageValue(storageSurf, -1)
+	end
+
 end

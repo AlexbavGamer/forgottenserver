@@ -765,6 +765,13 @@ ReturnValue Game::internalMoveCreature(Creature* creature, Direction direction, 
 	creature->setLastPosition(creature->getPosition());
 	const Position& currentPos = creature->getPosition();
 	Position destPos = getNextPosition(direction, currentPos);
+
+	for (CreatureEvent* moveEvent : creature->getCreatureEvents(CREATURE_EVENT_MOVE)) {
+		if (!moveEvent->executeOnMove(creature, destPos, currentPos)) {
+			return RETURNVALUE_NOTPOSSIBLE;
+		}
+	}
+
 	Player* player = creature->getPlayer();
 
 	bool diagonalMovement = (direction & DIRECTION_DIAGONAL_MASK) != 0;
@@ -1033,6 +1040,9 @@ void Game::playerMoveItem(Player* player, const Position& fromPos,
 	ReturnValue ret = internalMoveItem(fromCylinder, toCylinder, toIndex, item, count, nullptr, 0, player, nullptr, &fromPos, &toPos);
 	if (ret != RETURNVALUE_NOERROR) {
 		player->sendCancelMessage(ret);
+	}
+	else {
+		g_events->eventPlayerOnItemMoved(player, item, count, fromPos, toPos, fromCylinder, toCylinder);
 	}
 }
 
@@ -1623,7 +1633,7 @@ Item* Game::transformItem(Item* item, uint16_t newId, int32_t newCount /*= -1*/)
 			} else {
 				int32_t newItemId = newId;
 				if (curType.id == newType.id) {
-					newItemId = item->getDecayTo();
+					newItemId = curType.decayTo;
 				}
 
 				if (newItemId < 0) {
@@ -3987,6 +3997,11 @@ void Game::combatGetTypeInfo(CombatType_t combatType, Creature* target, TextColo
 					color = TEXTCOLOR_ELECTRICPURPLE;
 					effect = CONST_ME_ENERGYHIT;
 					break;
+				case RACE_GRASS:
+					color = TEXTCOLOR_LIGHTGREEN;
+					effect = CONST_ME_HITBYPOISON;
+					splash = Item::CreateItem(ITEM_SMALLSPLASH, FLUID_GREEN);
+					break;
 				default:
 					color = TEXTCOLOR_NONE;
 					effect = CONST_ME_NONE;
@@ -4036,6 +4051,86 @@ void Game::combatGetTypeInfo(CombatType_t combatType, Creature* target, TextColo
 		case COMBAT_DEATHDAMAGE: {
 			color = TEXTCOLOR_DARKRED;
 			effect = CONST_ME_SMALLCLOUDS;
+			break;
+		}
+		case COMBAT_PSYCHICDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_GRASSDAMAGE: { //pota
+			color = TEXTCOLOR_LIGHTGREEN;
+			effect = CONST_ME_SMALLPLANTS;
+			break;
+		}
+		case COMBAT_NORMALDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_WATERDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_FLYINGDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_POISONDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_ELECTRICDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_GROUNDDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_ROCKDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_BUGDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_DRAGONDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_GHOSTDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_DARKDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_STEELDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_FAIRYDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
+			break;
+		}
+		case COMBAT_FIGHTINGDAMAGE: { //pota
+			color = TEXTCOLOR_RED;
+			effect = CONST_ME_NONE;
 			break;
 		}
 		case COMBAT_LIFEDRAIN: {
@@ -4181,7 +4276,7 @@ bool Game::combatChangeHealth(Creature* attacker, Creature* target, CombatDamage
 					const auto& events = target->getCreatureEvents(CREATURE_EVENT_MANACHANGE);
 					if (!events.empty()) {
 						for (CreatureEvent* creatureEvent : events) {
-							creatureEvent->executeManaChange(target, attacker, damage);
+							creatureEvent->executeManaChange(target, attacker, healthChange, damage.origin);
 						}
 						healthChange = damage.primary.value + damage.secondary.value;
 						if (healthChange == 0) {
@@ -4381,45 +4476,29 @@ bool Game::combatChangeHealth(Creature* attacker, Creature* target, CombatDamage
 	return true;
 }
 
-bool Game::combatChangeMana(Creature* attacker, Creature* target, CombatDamage& damage)
+bool Game::combatChangeMana(Creature* attacker, Creature* target, int32_t manaChange, CombatOrigin origin)
 {
-	Player* targetPlayer = target->getPlayer();
-	if (!targetPlayer) {
-		return true;
-	}
-
-	int32_t manaChange = damage.primary.value + damage.secondary.value;
 	if (manaChange > 0) {
 		if (attacker) {
 			const Player* attackerPlayer = attacker->getPlayer();
-			if (attackerPlayer && attackerPlayer->getSkull() == SKULL_BLACK && attackerPlayer->getSkullClient(target) == SKULL_NONE) {
+			if (attackerPlayer && attackerPlayer->getSkull() == SKULL_BLACK && target->getPlayer() && attackerPlayer->getSkullClient(target) == SKULL_NONE) {
 				return false;
 			}
 		}
 
-		if (damage.origin != ORIGIN_NONE) {
+		if (origin != ORIGIN_NONE) {
 			const auto& events = target->getCreatureEvents(CREATURE_EVENT_MANACHANGE);
 			if (!events.empty()) {
 				for (CreatureEvent* creatureEvent : events) {
-					creatureEvent->executeManaChange(target, attacker, damage);
+					creatureEvent->executeManaChange(target, attacker, manaChange, origin);
 				}
-				damage.origin = ORIGIN_NONE;
-				return combatChangeMana(attacker, target, damage);
+				return combatChangeMana(attacker, target, manaChange, ORIGIN_NONE);
 			}
 		}
 
-		int32_t realManaChange = targetPlayer->getMana();
-		targetPlayer->changeMana(manaChange);
-		realManaChange = targetPlayer->getMana() - realManaChange;
-
-		if (realManaChange > 0 && !targetPlayer->isInGhostMode()) {
-			TextMessage message(MESSAGE_HEALED, "You gained " + std::to_string(realManaChange) + " mana.");
-			message.position = target->getPosition();
-			message.primary.value = realManaChange;
-			message.primary.color = TEXTCOLOR_MAYABLUE;
-			targetPlayer->sendTextMessage(message);
-		}
-	} else {
+		target->changeMana(manaChange);
+	}
+	else {
 		const Position& targetPos = target->getPosition();
 		if (!target->isAttackable()) {
 			if (!target->isInGhostMode()) {
@@ -4431,15 +4510,17 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, CombatDamage& 
 		Player* attackerPlayer;
 		if (attacker) {
 			attackerPlayer = attacker->getPlayer();
-		} else {
+		}
+		else {
 			attackerPlayer = nullptr;
 		}
 
-		if (attackerPlayer && attackerPlayer->getSkull() == SKULL_BLACK && attackerPlayer->getSkullClient(targetPlayer) == SKULL_NONE) {
+		Player* targetPlayer = target->getPlayer();
+		if (attackerPlayer && targetPlayer && attackerPlayer->getSkull() == SKULL_BLACK && attackerPlayer->getSkullClient(targetPlayer) == SKULL_NONE) {
 			return false;
 		}
 
-		int32_t manaLoss = std::min<int32_t>(targetPlayer->getMana(), -manaChange);
+		int32_t manaLoss = std::min<int32_t>(target->getMana(), -manaChange);
 		BlockType_t blockType = target->blockHit(attacker, COMBAT_MANADRAIN, manaLoss);
 		if (blockType != BLOCK_NONE) {
 			addMagicEffect(targetPos, CONST_ME_POFF);
@@ -4450,66 +4531,57 @@ bool Game::combatChangeMana(Creature* attacker, Creature* target, CombatDamage& 
 			return true;
 		}
 
-		if (damage.origin != ORIGIN_NONE) {
+		if (origin != ORIGIN_NONE) {
 			const auto& events = target->getCreatureEvents(CREATURE_EVENT_MANACHANGE);
 			if (!events.empty()) {
 				for (CreatureEvent* creatureEvent : events) {
-					creatureEvent->executeManaChange(target, attacker, damage);
+					creatureEvent->executeManaChange(target, attacker, manaChange, origin);
 				}
-				damage.origin = ORIGIN_NONE;
-				return combatChangeMana(attacker, target, damage);
+				return combatChangeMana(attacker, target, manaChange, ORIGIN_NONE);
 			}
 		}
 
-		targetPlayer->drainMana(attacker, manaLoss);
-
-		std::stringstream ss;
+		target->drainMana(attacker, manaLoss);
 
 		std::string damageString = std::to_string(manaLoss);
-
-		std::string spectatorMessage;
+		std::string spectatorMessage = ucfirst(target->getNameDescription()) + " loses " + damageString + " mana";
+		if (attacker) {
+			spectatorMessage += " due to ";
+			if (attacker == target) {
+				spectatorMessage += (targetPlayer ? (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "her own attack" : "his own attack") : "its own attack");
+			}
+			else {
+				spectatorMessage += "an attack by " + attacker->getNameDescription();
+			}
+		}
+		spectatorMessage += '.';
 
 		TextMessage message;
 		message.position = targetPos;
 		message.primary.value = manaLoss;
 		message.primary.color = TEXTCOLOR_BLUE;
 
-		SpectatorVec spectators;
-		map.getSpectators(spectators, targetPos, false, true);
-		for (Creature* spectator : spectators) {
+		SpectatorVec list;
+		map.getSpectators(list, targetPos, false, true);
+		for (Creature* spectator : list) {
 			Player* tmpPlayer = spectator->getPlayer();
 			if (tmpPlayer == attackerPlayer && attackerPlayer != targetPlayer) {
-				ss.str({});
-				ss << ucfirst(target->getNameDescription()) << " loses " << damageString << " mana due to your attack.";
 				message.type = MESSAGE_DAMAGE_DEALT;
-				message.text = ss.str();
-			} else if (tmpPlayer == targetPlayer) {
-				ss.str({});
-				ss << "You lose " << damageString << " mana";
-				if (!attacker) {
-					ss << '.';
-				} else if (targetPlayer == attackerPlayer) {
-					ss << " due to your own attack.";
-				} else {
-					ss << " mana due to an attack by " << attacker->getNameDescription() << '.';
-				}
+				message.text = ucfirst(target->getNameDescription()) + " loses " + damageString + " mana due to your attack.";
+			}
+			else if (tmpPlayer == targetPlayer) {
 				message.type = MESSAGE_DAMAGE_RECEIVED;
-				message.text = ss.str();
-			} else {
-				if (spectatorMessage.empty()) {
-					ss.str({});
-					ss << ucfirst(target->getNameDescription()) << " loses " << damageString << " mana";
-					if (attacker) {
-						ss << " due to ";
-						if (attacker == target) {
-							ss << (targetPlayer->getSex() == PLAYERSEX_FEMALE ? "her own attack" : "his own attack");
-						} else {
-							ss << "an attack by " << attacker->getNameDescription();
-						}
-					}
-					ss << '.';
-					spectatorMessage = ss.str();
+				if (!attacker) {
+					message.text = "You lose " + damageString + " mana.";
 				}
+				else if (targetPlayer == attackerPlayer) {
+					message.text = "You lose " + damageString + " mana due to your own attack.";
+				}
+				else {
+					message.text = "You lose " + damageString + " mana due to an attack by " + attacker->getNameDescription() + '.';
+				}
+			}
+			else {
 				message.type = MESSAGE_DAMAGE_OTHERS;
 				message.text = spectatorMessage;
 			}
@@ -4595,7 +4667,7 @@ void Game::internalDecayItem(Item* item)
 {
 	const ItemType& it = Item::items[item->getID()];
 	if (it.decayTo != 0) {
-		Item* newItem = transformItem(item, item->getDecayTo());
+		Item* newItem = transformItem(item, it.decayTo);
 		startDecay(newItem);
 	} else {
 		ReturnValue ret = internalRemoveItem(item);

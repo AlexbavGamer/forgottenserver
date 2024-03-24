@@ -23,9 +23,11 @@
 #include "game.h"
 #include "spells.h"
 #include "events.h"
+#include "configmanager.h"
 
 extern Game g_game;
 extern Monsters g_monsters;
+extern ConfigManager g_config;
 extern Events* g_events;
 
 int32_t Monster::despawnRange;
@@ -33,26 +35,39 @@ int32_t Monster::despawnRadius;
 
 uint32_t Monster::monsterAutoID = 0x40000000;
 
-Monster* Monster::createMonster(const std::string& name)
+Monster* Monster::createMonster(const std::string& name, uint16_t lvl, uint16_t bst)
 {
 	MonsterType* mType = g_monsters.getMonsterType(name);
 	if (!mType) {
 		return nullptr;
 	}
-	return new Monster(mType);
+	return new Monster(mType, lvl, bst);
 }
 
-Monster::Monster(MonsterType* mType) :
+Monster::Monster(MonsterType* mType, uint16_t lvl, uint16_t bst) :
 	Creature(),
 	strDescription(mType->nameDescription),
 	mType(mType)
 {
+	if (lvl == 0)
+	{
+		level = uniform_random(mType->info.minLevel, mType->info.maxLevel);
+		health = mType->info.health + (mType->info.health * (g_config.getDouble(ConfigManager::MONSTERLEVEL_BONUSHEALTH) * level)); //pota
+		healthMax = mType->info.healthMax + (mType->info.healthMax * (g_config.getDouble(ConfigManager::MONSTERLEVEL_BONUSHEALTH) * level)); //pota
+		baseSpeed = mType->info.baseSpeed + (mType->info.baseSpeed * (g_config.getDouble(ConfigManager::MONSTERLEVEL_BONUSSPEED) * level)); //pota
+		boost = 0;
+	}
+	else
+	{
+		health = mType->info.health;
+		healthMax = mType->info.healthMax;
+		baseSpeed = mType->info.baseSpeed;
+		level = lvl;
+		boost = bst;
+	}
 	defaultOutfit = mType->info.outfit;
 	currentOutfit = mType->info.outfit;
 	skull = mType->info.skull;
-	health = mType->info.health;
-	healthMax = mType->info.healthMax;
-	baseSpeed = mType->info.baseSpeed;
 	internalLight = mType->info.light;
 	hiddenHealth = mType->info.hiddenHealth;
 
@@ -690,6 +705,14 @@ void Monster::onEndCondition(ConditionType_t type)
 	updateIdleStatus();
 }
 
+void Monster::onCreatureConvinced(const Creature* convincer, const Creature* creature)
+{
+	if (convincer != this && (isFriend(creature) || isOpponent(creature))) {
+		updateTargetList();
+		updateIdleStatus();
+	}
+}
+
 void Monster::onThink(uint32_t interval)
 {
 	Creature::onThink(interval);
@@ -831,6 +854,20 @@ bool Monster::canUseSpell(const Position& pos, const Position& targetPos,
 {
 	inRange = true;
 
+	if (isSummon() && getMaster()->getPlayer() && !sb.isMelee)
+	{
+		return false;
+	}
+
+	if (hasCondition(CONDITION_PARALYZE)) {
+		g_game.addMagicEffect(getPosition(), CONST_ME_STUN);
+		return false;
+	}
+
+	if (hasCondition(CONDITION_SLEEP)) {
+		return false;
+	}
+
 	if (sb.isMelee && isFleeing()) {
 		return false;
 	}
@@ -963,7 +1000,7 @@ void Monster::onThinkDefense(uint32_t interval)
 				continue;
 			}
 
-			Monster* summon = Monster::createMonster(summonBlock.name);
+			Monster* summon = Monster::createMonster(summonBlock.name, 0, 0);
 			if (summon) {
 				if (g_game.placeCreature(summon, getPosition(), false, summonBlock.force)) {
 					summon->setDropLoot(false);
@@ -1921,7 +1958,7 @@ void Monster::updateLookDirection()
 void Monster::dropLoot(Container* corpse, Creature*)
 {
 	if (corpse && lootDrop) {
-		g_events->eventMonsterOnDropLoot(this, corpse);
+		mType->createLoot(corpse, g_config.getDouble(ConfigManager::MONSTERLEVEL_BONUSLOOT) * level);
 	}
 }
 
@@ -1964,6 +2001,59 @@ bool Monster::challengeCreature(Creature* creature)
 		targetChangeTicks = 0;
 	}
 	return result;
+}
+
+bool Monster::convinceCreature(Creature* creature)
+{
+	Player* player = creature->getPlayer();
+	if (player && !player->hasFlag(PlayerFlag_CanConvinceAll)) {
+		if (!mType->info.isConvinceable) {
+			return false;
+		}
+	}
+
+	if (isSummon()) {
+		if (getMaster()->getPlayer()) {
+			return false;
+		}
+		else if (getMaster() == creature) {
+			return false;
+		}
+
+		Creature* oldMaster = getMaster();
+		oldMaster->removeSummon(this);
+	}
+
+	creature->addSummon(this);
+
+	setFollowCreature(nullptr);
+	setAttackedCreature(nullptr);
+
+	//destroy summons
+	for (Creature* summon : summons) {
+		summon->changeHealth(-summon->getHealth());
+		summon->setMaster(nullptr);
+		summon->decrementReferenceCounter();
+	}
+	summons.clear();
+
+	isMasterInRange = true;
+	updateTargetList();
+	updateIdleStatus();
+
+	//Notify surrounding about the change
+	SpectatorVec list;
+	g_game.map.getSpectators(list, getPosition(), true);
+	g_game.map.getSpectators(list, creature->getPosition(), true);
+	for (Creature* spectator : list) {
+		spectator->onCreatureConvinced(creature, this);
+	}
+
+	if (spawn) {
+		spawn->removeMonster(this);
+		spawn = nullptr;
+	}
+	return true;
 }
 
 void Monster::getPathSearchParams(const Creature* creature, FindPathParams& fpp) const

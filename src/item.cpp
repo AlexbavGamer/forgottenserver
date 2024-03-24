@@ -576,13 +576,13 @@ Attr_ReadValue Item::readAttr(AttrTypes_t attr, PropStream& propStream)
 			break;
 		}
 
-		case ATTR_DECAYTO: {
-			int32_t decayTo;
-			if (!propStream.read<int32_t>(decayTo)) {
+		case ATTR_SPECIAL: {
+			std::string special;
+			if (!propStream.readString(special)) {
 				return ATTR_READ_ERROR;
 			}
 
-			setIntAttr(ITEM_ATTRIBUTE_DECAYTO, decayTo);
+			setStrAttr(ITEM_ATTRIBUTE_SPECIAL, special);
 			break;
 		}
 
@@ -593,7 +593,7 @@ Attr_ReadValue Item::readAttr(AttrTypes_t attr, PropStream& propStream)
 				return ATTR_READ_ERROR;
 			}
 
-			setIntAttr(ITEM_ATTRIBUTE_WRAPID, wrapId);
+			setIntAttr(ITEM_ATTRIBUTE_SPECIAL, wrapId);
 			break;
 		}
 
@@ -654,30 +654,6 @@ Attr_ReadValue Item::readAttr(AttrTypes_t attr, PropStream& propStream)
 		//Container class
 		case ATTR_CONTAINER_ITEMS: {
 			return ATTR_READ_ERROR;
-		}
-
-		case ATTR_CUSTOM_ATTRIBUTES: {
-			uint64_t size;
-			if (!propStream.read<uint64_t>(size)) {
-				return ATTR_READ_ERROR;
-			}
-
-			for (uint64_t i = 0; i < size; i++) {
-				// Unserialize key type and value
-				std::string key;
-				if (!propStream.readString(key)) {
-					return ATTR_READ_ERROR;
-				};
-
-				// Unserialize value type and value
-				ItemAttributes::CustomAttribute val;
-				if (!val.unserialize(propStream)) {
-					return ATTR_READ_ERROR;
-				}
-
-				setCustomAttribute(key, val);
-			}
-			break;
 		}
 
 		default:
@@ -813,11 +789,6 @@ void Item::serializeAttr(PropWriteStream& propWriteStream) const
 		propWriteStream.write<uint8_t>(getIntAttr(ITEM_ATTRIBUTE_SHOOTRANGE));
 	}
 
-	if (hasAttribute(ITEM_ATTRIBUTE_DECAYTO)) {
-		propWriteStream.write<uint8_t>(ATTR_DECAYTO);
-		propWriteStream.write<int32_t>(getIntAttr(ITEM_ATTRIBUTE_DECAYTO));
-	}
-
 	if (hasAttribute(ITEM_ATTRIBUTE_WRAPID)) {
 		propWriteStream.write<uint8_t>(ATTR_WRAPID);
 		propWriteStream.write<uint16_t>(getIntAttr(ITEM_ATTRIBUTE_WRAPID));
@@ -828,17 +799,9 @@ void Item::serializeAttr(PropWriteStream& propWriteStream) const
 		propWriteStream.write<int8_t>(getIntAttr(ITEM_ATTRIBUTE_AUTOOPEN));
 	}
 
-	if (hasAttribute(ITEM_ATTRIBUTE_CUSTOM)) {
-		const ItemAttributes::CustomAttributeMap* customAttrMap = attributes->getCustomAttributeMap();
-		propWriteStream.write<uint8_t>(ATTR_CUSTOM_ATTRIBUTES);
-		propWriteStream.write<uint64_t>(static_cast<uint64_t>(customAttrMap->size()));
-		for (const auto &entry : *customAttrMap) {
-			// Serializing key type and value
-			propWriteStream.writeString(entry.first);
-
-			// Serializing value type and value
-			entry.second.serialize(propWriteStream);
-		}
+	if (hasAttribute(ITEM_ATTRIBUTE_SPECIAL)) {
+		propWriteStream.write<uint8_t>(ATTR_SPECIAL);
+		propWriteStream.writeString(getStrAttr(ITEM_ATTRIBUTE_SPECIAL));
 	}
 }
 
@@ -1597,7 +1560,7 @@ bool Item::canDecay() const
 	}
 
 	const ItemType& it = Item::items[id];
-	if (getDecayTo() < 0 || it.decayTime == 0) {
+	if (it.decayTo < 0 || it.decayTime == 0) {
 		return false;
 	}
 

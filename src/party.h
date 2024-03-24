@@ -61,6 +61,8 @@ class Party
 		bool isPlayerInvited(const Player* player) const;
 		void updateAllPartyIcons();
 		void broadcastPartyMessage(MessageClasses msgClass, const std::string& msg, bool sendToInvitations = false);
+		void broadcastPartyLoot(const std::string& loot);
+
 		bool empty() const {
 			return memberList.empty() && inviteList.empty();
 		}

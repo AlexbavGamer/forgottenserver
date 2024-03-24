@@ -1,5 +1,5 @@
 function Game.broadcastMessage(message, messageType)
-	if not messageType then
+	if messageType == nil then
 		messageType = MESSAGE_STATUS_WARNING
 	end
 

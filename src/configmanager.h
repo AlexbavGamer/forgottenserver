@@ -78,6 +78,7 @@ class ConfigManager
 			MYSQL_SOCK,
 			DEFAULT_PRIORITY,
 			MAP_AUTHOR,
+			MONSTERLEVEL_PREFIX,
 
 			LAST_STRING_CONFIG /* this must be the last one */
 		};
@@ -120,17 +121,29 @@ class ConfigManager
 			LAST_INTEGER_CONFIG /* this must be the last one */
 		};
 
+		enum double_config_t { //pota
+			MONSTERLEVEL_BONUSEXP,
+			MONSTERLEVEL_BONUSDMG,
+			MONSTERLEVEL_BONUSSPEED,
+			MONSTERLEVEL_BONUSLOOT,
+			MONSTERLEVEL_BONUSHEALTH,
+
+			LAST_DOUBLE_CONFIG
+		};
+
 		bool load();
 		bool reload();
 
 		const std::string& getString(string_config_t what) const;
 		int32_t getNumber(integer_config_t what) const;
 		bool getBoolean(boolean_config_t what) const;
+		double getDouble(double_config_t what) const;
 
 	private:
 		std::string string[LAST_STRING_CONFIG] = {};
 		int32_t integer[LAST_INTEGER_CONFIG] = {};
 		bool boolean[LAST_BOOLEAN_CONFIG] = {};
+		double decimal[LAST_DOUBLE_CONFIG] = {};
 
 		bool loaded = false;
 };

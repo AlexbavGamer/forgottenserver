@@ -287,6 +287,8 @@ class Player final : public Creature, public Cylinder
 			return vocation;
 		}
 
+		bool isUsingOtClient() const { return operatingSystem >= CLIENTOS_OTCLIENT_LINUX; }
+
 		OperatingSystem_t getOperatingSystem() const {
 			return operatingSystem;
 		}
@@ -544,6 +546,10 @@ class Player final : public Creature, public Cylinder
 		bool canWalkthroughEx(const Creature* creature) const;
 
 		RaceType_t getRace() const override {
+			return RACE_BLOOD;
+		}
+
+		RaceType_t getRace2() const override {
 			return RACE_BLOOD;
 		}
 
@@ -863,6 +869,11 @@ class Player final : public Creature, public Cylinder
 				client->sendSpellGroupCooldown(groupId, time);
 			}
 		}
+		void sendExtendedOpcode(uint8_t opcode, const std::string& buffer) {
+			if (client) {
+				client->sendExtendedOpcode(opcode, buffer);
+			}
+		}
 		void sendModalWindow(const ModalWindow& modalWindow);
 
 		//container
@@ -918,6 +929,11 @@ class Player final : public Creature, public Cylinder
 		void sendCancelMessage(const std::string& msg) const {
 			if (client) {
 				client->sendTextMessage(TextMessage(MESSAGE_STATUS_SMALL, msg));
+			}
+		}
+		void sendAnimatedText(TextMessage& message) const {
+			if (client) {
+				client->sendAnimatedMessage(message);
 			}
 		}
 		void sendCancelMessage(ReturnValue message) const;

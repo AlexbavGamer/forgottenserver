@@ -107,6 +107,149 @@ ConditionDamage* Monsters::getDamageCondition(ConditionType_t conditionType,
 	return condition;
 }
 
+uint32_t Monsters::getLootRandom()
+{
+	return uniform_random(0, MAX_LOOTCHANCE) / g_config.getNumber(ConfigManager::RATE_LOOT);
+}
+
+//void MonsterType::createLoot(Container* corpse)
+void MonsterType::createLoot(Container* corpse, double bonus) //pota
+{
+	if (g_config.getNumber(ConfigManager::RATE_LOOT) == 0) {
+		corpse->startDecaying();
+		return;
+	}
+
+	Player* owner = g_game.getPlayerByID(corpse->getCorpseOwner());
+	if (!owner || owner->getStaminaMinutes() > 840) {
+		for (auto it = info.lootItems.rbegin(), end = info.lootItems.rend(); it != end; ++it) {
+			//			auto itemList = createLootItem(*it);
+			auto itemList = createLootItem(*it, bonus); //pota
+			if (itemList.empty()) {
+				continue;
+			}
+
+			for (Item* item : itemList) {
+				//check containers
+				if (Container* container = item->getContainer()) {
+					//					if (!createLootContainer(container, *it)) {
+					if (!createLootContainer(container, *it, bonus)) { //pota
+						delete container;
+						continue;
+					}
+				}
+
+				if (g_game.internalAddItem(corpse, item) != RETURNVALUE_NOERROR) {
+					corpse->internalAddThing(item);
+				}
+			}
+		}
+
+		if (owner) {
+			std::ostringstream ss;
+			ss << "Loot of " << nameDescription << ": " << corpse->getContentDescription();
+
+			if (owner->getParty()) {
+				owner->getParty()->broadcastPartyLoot(ss.str());
+			}
+			else {
+				owner->sendTextMessage(MESSAGE_LOOT, ss.str());
+			}
+		}
+	}
+	else {
+		std::ostringstream ss;
+		ss << "Loot of " << nameDescription << ": nothing (due to low stamina)";
+
+		if (owner->getParty()) {
+			owner->getParty()->broadcastPartyLoot(ss.str());
+		}
+		else {
+			owner->sendTextMessage(MESSAGE_LOOT, ss.str());
+		}
+	}
+
+	corpse->startDecaying();
+}
+
+//std::vector<Item*> MonsterType::createLootItem(const LootBlock& lootBlock)
+std::vector<Item*> MonsterType::createLootItem(const LootBlock& lootBlock, double bonus) //pota
+{
+	int32_t itemCount = 0;
+
+	uint32_t randvalue = Monsters::getLootRandom();
+	double modifier = randvalue * bonus; //pota
+	// make sure no underflow happens
+	if (static_cast<int64_t>(randvalue) - modifier < 0) { //pota
+		randvalue = 0;
+	}
+	else {
+		randvalue = randvalue - modifier;
+	}
+	if (randvalue < lootBlock.chance) {
+		if (Item::items[lootBlock.id].stackable) {
+			itemCount = randvalue % lootBlock.countmax + 1;
+		}
+		else {
+			itemCount = 1;
+		}
+	}
+
+	std::vector<Item*> itemList;
+	while (itemCount > 0) {
+		uint16_t n = static_cast<uint16_t>(std::min<int32_t>(itemCount, 100));
+		Item* tmpItem = Item::CreateItem(lootBlock.id, n);
+		if (!tmpItem) {
+			break;
+		}
+
+		itemCount -= n;
+
+		if (lootBlock.subType != -1) {
+			tmpItem->setSubType(lootBlock.subType);
+		}
+
+		if (lootBlock.actionId != -1) {
+			tmpItem->setActionId(lootBlock.actionId);
+		}
+
+		if (!lootBlock.text.empty()) {
+			tmpItem->setText(lootBlock.text);
+		}
+
+		itemList.push_back(tmpItem);
+	}
+	return itemList;
+}
+
+//bool MonsterType::createLootContainer(Container* parent, const LootBlock& lootblock)
+bool MonsterType::createLootContainer(Container* parent, const LootBlock& lootblock, double bonus) //pota
+{
+	auto it = lootblock.childLoot.begin(), end = lootblock.childLoot.end();
+	if (it == end) {
+		return true;
+	}
+
+	for (; it != end && parent->size() < parent->capacity(); ++it) {
+		//		auto itemList = createLootItem(*it);
+		auto itemList = createLootItem(*it, bonus); //pota
+		for (Item* tmpItem : itemList) {
+			if (Container* container = tmpItem->getContainer()) {
+				if (!createLootContainer(container, *it)) {
+					delete container;
+				}
+				else {
+					parent->internalAddThing(container);
+				}
+			}
+			else {
+				parent->internalAddThing(tmpItem);
+			}
+		}
+	}
+	return !parent->empty();
+}
+
 bool Monsters::deserializeSpell(const pugi::xml_node& node, spellBlock_t& sb, const std::string& description)
 {
 	std::string name;
@@ -146,6 +289,15 @@ bool Monsters::deserializeSpell(const pugi::xml_node& node, spellBlock_t& sb, co
 
 	if ((attr = node.attribute("min"))) {
 		sb.minCombatValue = pugi::cast<int32_t>(attr.value());
+	}
+
+	if ((attr = node.attribute("name")))
+	{
+		sb.name = attr.as_string();
+	}
+
+	if ((attr = node.attribute("isTarget"))) {
+		sb.isTarget = attr.as_bool();
 	}
 
 	if ((attr = node.attribute("max"))) {
@@ -321,6 +473,38 @@ bool Monsters::deserializeSpell(const pugi::xml_node& node, spellBlock_t& sb, co
 			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_HOLYDAMAGE);
 		} else if (tmpName == "death") {
 			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_DEATHDAMAGE);
+		} else if (tmpName == "psychic") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_PSYCHICDAMAGE);
+		} else if (tmpName == "grass") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_GRASSDAMAGE);
+		} else if (tmpName == "normal") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_NORMALDAMAGE);
+		} else if (tmpName == "water") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_WATERDAMAGE);
+		} else if (tmpName == "flying") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_FLYINGDAMAGE);
+		} else if (tmpName == "poison") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_POISONDAMAGE);
+		} else if (tmpName == "electric") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_ELECTRICDAMAGE);
+		} else if (tmpName == "ground") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_GROUNDDAMAGE);
+		} else if (tmpName == "rock") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_ROCKDAMAGE);
+		} else if (tmpName == "bug") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_BUGDAMAGE);
+		} else if (tmpName == "dragon") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_DRAGONDAMAGE);
+		} else if (tmpName == "ghost") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_GHOSTDAMAGE);
+		} else if (tmpName == "dark") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_DARKDAMAGE);
+		} else if (tmpName == "steel") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_STEELDAMAGE);
+		} else if (tmpName == "fairy") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_FAIRYDAMAGE);
+		} else if (tmpName == "fighting") { //pota
+			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_FIGHTINGDAMAGE);
 		} else if (tmpName == "lifedrain") {
 			combat->setParam(COMBAT_PARAM_TYPE, COMBAT_LIFEDRAIN);
 		} else if (tmpName == "manadrain") {
@@ -825,8 +1009,99 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 			mType->info.race = RACE_FIRE;
 		} else if (tmpStrValue == "energy" || tmpInt == 5) {
 			mType->info.race = RACE_ENERGY;
+		} else if (tmpStrValue == "grass" || tmpInt == 6) {
+			mType->info.race = RACE_GRASS;
+		} else if (tmpStrValue == "normal" || tmpInt == 7) {
+			mType->info.race = RACE_NORMAL;
+		} else if (tmpStrValue == "water" || tmpInt == 8) {
+			mType->info.race = RACE_WATER;
+		} else if (tmpStrValue == "flying" || tmpInt == 9) {
+			mType->info.race = RACE_FLYING;
+		} else if (tmpStrValue == "poison" || tmpInt == 10) {
+			mType->info.race = RACE_POISON;
+		} else if (tmpStrValue == "electric" || tmpInt == 11) {
+			mType->info.race = RACE_ELECTRIC;
+		} else if (tmpStrValue == "ground" || tmpInt == 12) {
+			mType->info.race = RACE_GROUND;
+		} else if (tmpStrValue == "psychic" || tmpInt == 13) {
+			mType->info.race = RACE_PSYCHIC;
+		} else if (tmpStrValue == "rock" || tmpInt == 14) {
+			mType->info.race = RACE_ROCK;
+		} else if (tmpStrValue == "ice" || tmpInt == 15) {
+			mType->info.race = RACE_ICE;
+		} else if (tmpStrValue == "bug" || tmpInt == 16) {
+			mType->info.race = RACE_BUG;
+		} else if (tmpStrValue == "dragon" || tmpInt == 17) {
+			mType->info.race = RACE_DRAGON;
+		} else if (tmpStrValue == "ghost" || tmpInt == 18) {
+			mType->info.race = RACE_GHOST;
+		} else if (tmpStrValue == "dark" || tmpInt == 19) {
+			mType->info.race = RACE_DARK;
+		} else if (tmpStrValue == "steel" || tmpInt == 20) {
+			mType->info.race = RACE_STEEL;
+		} else if (tmpStrValue == "fairy" || tmpInt == 21) {
+			mType->info.race = RACE_FAIRY;
+		} else if (tmpStrValue == "fighting" || tmpInt == 22) {
+			mType->info.race = RACE_FIGHTING;
+		} else if (tmpStrValue == "none" || tmpInt == 23) {
+			mType->info.race = RACE_NONE;
 		} else {
 			std::cout << "[Warning - Monsters::loadMonster] Unknown race type " << attr.as_string() << ". " << file << std::endl;
+		}
+	}
+
+	if ((attr = monsterNode.attribute("race2"))) { //pota
+		std::string tmpStrValue = asLowerCaseString(attr.as_string());
+		uint16_t tmpInt = pugi::cast<uint16_t>(attr.value());
+		if (tmpStrValue == "venom" || tmpInt == 1) {
+			mType->info.race2 = RACE_VENOM;
+		} else if (tmpStrValue == "blood" || tmpInt == 2) {
+			mType->info.race2 = RACE_BLOOD;
+		} else if (tmpStrValue == "undead" || tmpInt == 3) {
+			mType->info.race2 = RACE_UNDEAD;
+		} else if (tmpStrValue == "fire" || tmpInt == 4) {
+			mType->info.race2 = RACE_FIRE;
+		} else if (tmpStrValue == "energy" || tmpInt == 5) {
+			mType->info.race2 = RACE_ENERGY;
+		} else if (tmpStrValue == "grass" || tmpInt == 6) {
+			mType->info.race2 = RACE_GRASS;
+		} else if (tmpStrValue == "normal" || tmpInt == 7) {
+			mType->info.race2 = RACE_NORMAL;
+		} else if (tmpStrValue == "water" || tmpInt == 8) {
+			mType->info.race2 = RACE_WATER;
+		} else if (tmpStrValue == "flying" || tmpInt == 9) {
+			mType->info.race2 = RACE_FLYING;
+		} else if (tmpStrValue == "poison" || tmpInt == 10) {
+			mType->info.race2 = RACE_POISON;
+		} else if (tmpStrValue == "electric" || tmpInt == 11) {
+			mType->info.race2 = RACE_ELECTRIC;
+		} else if (tmpStrValue == "ground" || tmpInt == 12) {
+			mType->info.race2 = RACE_GROUND;
+		} else if (tmpStrValue == "psychic" || tmpInt == 13) {
+			mType->info.race2 = RACE_PSYCHIC;
+		} else if (tmpStrValue == "rock" || tmpInt == 14) {
+			mType->info.race2 = RACE_ROCK;
+		} else if (tmpStrValue == "ice" || tmpInt == 15) {
+			mType->info.race2 = RACE_ICE;
+		} else if (tmpStrValue == "bug" || tmpInt == 16) {
+			mType->info.race2 = RACE_BUG;
+		} else if (tmpStrValue == "dragon" || tmpInt == 17) {
+			mType->info.race2 = RACE_DRAGON;
+		} else if (tmpStrValue == "ghost" || tmpInt == 18) {
+			mType->info.race2 = RACE_GHOST;
+		} else if (tmpStrValue == "dark" || tmpInt == 19) {
+			mType->info.race2 = RACE_DARK;
+		} else if (tmpStrValue == "steel" || tmpInt == 20) {
+			mType->info.race2 = RACE_STEEL;
+		} else if (tmpStrValue == "fairy" || tmpInt == 21) {
+			mType->info.race2 = RACE_FAIRY;
+		} else if (tmpStrValue == "fighting" || tmpInt == 22) {
+			mType->info.race2 = RACE_FIGHTING;
+		} else if (tmpStrValue == "none" || tmpInt == 23) {
+			mType->info.race2 = RACE_NONE;
+		}
+		else {
+			std::cout << "[Warning - Monsters::loadMonster] Unknown race2 type " << attr.as_string() << ". " << file << std::endl;
 		}
 	}
 
@@ -881,29 +1156,93 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 		}
 	}
 
+	if ((node = monsterNode.child("level"))) { //pota
+		if ((attr = node.attribute("min"))) {
+			mType->info.minLevel = pugi::cast<uint16_t>(attr.value());
+
+		}
+		else {
+			std::cout << "[Error - Monsters::loadMonster] Missing level min. " << file << std::endl;
+
+		}
+
+		if ((attr = node.attribute("max"))) {
+			mType->info.maxLevel = pugi::cast<uint16_t>(attr.value());
+
+		}
+		else {
+			std::cout << "[Error - Monsters::loadMonster] Missing level max. " << file << std::endl;
+
+		}
+	}
+
 	if ((node = monsterNode.child("flags"))) {
 		for (auto flagNode : node.children()) {
 			attr = flagNode.first_attribute();
 			const char* attrName = attr.name();
 			if (strcasecmp(attrName, "summonable") == 0) {
 				mType->info.isSummonable = attr.as_bool();
-			} else if (strcasecmp(attrName, "attackable") == 0) {
+			}
+			else if (strcasecmp(attrName, "attackable") == 0) {
 				mType->info.isAttackable = attr.as_bool();
-			} else if (strcasecmp(attrName, "hostile") == 0) {
+			}
+			else if (strcasecmp(attrName, "hostile") == 0) {
 				mType->info.isHostile = attr.as_bool();
-			} else if (strcasecmp(attrName, "illusionable") == 0) {
+			}
+			else if (strcasecmp(attrName, "passive") == 0) {
+				mType->info.isPassive = attr.as_bool();
+
+			}
+			else if (strcasecmp(attrName, "flyable") == 0) {
+				mType->info.isFlyable = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "rideable") == 0) {
+				mType->info.isRideable = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "surfable") == 0) {
+				mType->info.isSurfable = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "canteleport") == 0) {
+				mType->info.canTeleport = attr.as_bool();
+			}
+			else if (strcasecmp(attrName, "catchchance") == 0) {
+				mType->info.catchChance = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "moveMagicAttackBase") == 0) {
+				mType->info.moveMagicAttackBase = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "moveMagicDefenseBase") == 0) {
+				mType->info.moveMagicDefenseBase = pugi::cast<int32_t>(attr.value());
+
+			}
+			else if (strcasecmp(attrName, "hasshiny") == 0) {
+				mType->info.hasShiny = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "hasmega") == 0) {
+				mType->info.hasMega = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "dexentry") == 0) {
+				mType->info.dexEntry = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "portraitid") == 0) {
+				mType->info.portraitId = pugi::cast<int32_t>(attr.value());
+			}
+			else if (strcasecmp(attrName, "illusionable") == 0) {
 				mType->info.isIllusionable = attr.as_bool();
-			} else if (strcasecmp(attrName, "convinceable") == 0) {
+			}
+			else if (strcasecmp(attrName, "convinceable") == 0) {
 				mType->info.isConvinceable = attr.as_bool();
-			} else if (strcasecmp(attrName, "pushable") == 0) {
+			}
+			else if (strcasecmp(attrName, "pushable") == 0) {
 				mType->info.pushable = attr.as_bool();
-			} else if (strcasecmp(attrName, "isboss") == 0) {
-				mType->info.isBoss = attr.as_bool();
-			} else if (strcasecmp(attrName, "canpushitems") == 0) {
+			}
+			else if (strcasecmp(attrName, "canpushitems") == 0) {
 				mType->info.canPushItems = attr.as_bool();
-			} else if (strcasecmp(attrName, "canpushcreatures") == 0) {
+			}
+			else if (strcasecmp(attrName, "canpushcreatures") == 0) {
 				mType->info.canPushCreatures = attr.as_bool();
-			} else if (strcasecmp(attrName, "staticattack") == 0) {
+			}
+			else if (strcasecmp(attrName, "staticattack") == 0) {
 				uint32_t staticAttack = pugi::cast<uint32_t>(attr.value());
 				if (staticAttack > 100) {
 					std::cout << "[Warning - Monsters::loadMonster] staticattack greater than 100. " << file << std::endl;
@@ -911,23 +1250,23 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 				}
 
 				mType->info.staticAttackChance = staticAttack;
-			} else if (strcasecmp(attrName, "lightlevel") == 0) {
+			}
+			else if (strcasecmp(attrName, "lightlevel") == 0) {
 				mType->info.light.level = pugi::cast<uint16_t>(attr.value());
-			} else if (strcasecmp(attrName, "lightcolor") == 0) {
+			}
+			else if (strcasecmp(attrName, "lightcolor") == 0) {
 				mType->info.light.color = pugi::cast<uint16_t>(attr.value());
-			} else if (strcasecmp(attrName, "targetdistance") == 0) {
+			}
+			else if (strcasecmp(attrName, "targetdistance") == 0) {
 				mType->info.targetDistance = std::max<int32_t>(1, pugi::cast<int32_t>(attr.value()));
-			} else if (strcasecmp(attrName, "runonhealth") == 0) {
+			}
+			else if (strcasecmp(attrName, "runonhealth") == 0) {
 				mType->info.runAwayHealth = pugi::cast<int32_t>(attr.value());
-			} else if (strcasecmp(attrName, "hidehealth") == 0) {
+			}
+			else if (strcasecmp(attrName, "hidehealth") == 0) {
 				mType->info.hiddenHealth = attr.as_bool();
-			} else if (strcasecmp(attrName, "canwalkonenergy") == 0) {
-				mType->info.canWalkOnEnergy = attr.as_bool();
-			} else if (strcasecmp(attrName, "canwalkonfire") == 0) {
-				mType->info.canWalkOnFire = attr.as_bool();
-			} else if (strcasecmp(attrName, "canwalkonpoison") == 0) {
-				mType->info.canWalkOnPoison = attr.as_bool();
-			} else {
+			}
+			else {
 				std::cout << "[Warning - Monsters::loadMonster] Unknown flag attribute: " << attrName << ". " << file << std::endl;
 			}
 		}
@@ -1009,8 +1348,60 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 			spellBlock_t sb;
 			if (deserializeSpell(attackNode, sb, monsterName)) {
 				mType->info.attackSpells.emplace_back(std::move(sb));
-			} else {
+			}
+			else {
 				std::cout << "[Warning - Monsters::loadMonster] Cant load spell. " << file << std::endl;
+			}
+		}
+	}
+
+	if ((node = monsterNode.child("moves"))) { //pota
+		for (auto attackNode : node.children())
+		{
+			spellBlock_t sb;
+			if (deserializeSpell(attackNode, sb, monsterName)) {
+				mType->info.moves.emplace_back(std::move(sb));
+			}
+			else {
+				std::cout << "[Warning - Monsters::loadMonster] Cant load move spell. " << file << std::endl;
+			}
+		}
+	}
+
+	if ((node = monsterNode.child("evolutions"))) { //pota
+		for (auto evolutionNode : node.children()) {
+			int32_t level = 1000;
+			int32_t chance = 0;
+			int32_t count = 100;
+			std::string itemName = "none";
+
+			if ((attr = evolutionNode.attribute("level"))) {
+				level = std::max<int32_t>(1, pugi::cast<int32_t>(attr.value()));
+			}
+
+			if ((attr = evolutionNode.attribute("chance"))) {
+				chance = pugi::cast<int32_t>(attr.value());
+			}
+
+			if ((attr = evolutionNode.attribute("count"))) {
+				count = pugi::cast<uint32_t>(attr.value());
+			}
+
+			if ((attr = evolutionNode.attribute("itemName"))) {
+				itemName = attr.as_string();
+			}
+
+			if ((attr = evolutionNode.attribute("name"))) {
+				evolutionBlock_t eb;
+				eb.name = attr.as_string();
+				eb.itemName = itemName;
+				eb.level = level;
+				eb.chance = chance;
+				eb.count = count;
+				mType->info.evolutions.emplace_back(eb);
+			}
+			else {
+				std::cout << "[Warning - Monsters::loadMonster] Missing evolution name. " << file << std::endl;
 			}
 		}
 	}
@@ -1041,114 +1432,280 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 				if (tmpStrValue == "physical") {
 					mType->info.damageImmunities |= COMBAT_PHYSICALDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_BLEEDING;
-				} else if (tmpStrValue == "energy") {
+				}
+				else if (tmpStrValue == "energy") {
 					mType->info.damageImmunities |= COMBAT_ENERGYDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_ENERGY;
-				} else if (tmpStrValue == "fire") {
+				}
+				else if (tmpStrValue == "fire") {
 					mType->info.damageImmunities |= COMBAT_FIREDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_FIRE;
-				} else if (tmpStrValue == "poison" ||
-							tmpStrValue == "earth") {
+				}
+				else if (tmpStrValue == "poison" || tmpStrValue == "earth") {
 					mType->info.damageImmunities |= COMBAT_EARTHDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_POISON;
-				} else if (tmpStrValue == "drown") {
+				}
+				else if (tmpStrValue == "drown") {
 					mType->info.damageImmunities |= COMBAT_DROWNDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_DROWN;
-				} else if (tmpStrValue == "ice") {
+				}
+				else if (tmpStrValue == "ice") {
 					mType->info.damageImmunities |= COMBAT_ICEDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_FREEZING;
-				} else if (tmpStrValue == "holy") {
+				}
+				else if (tmpStrValue == "holy") {
 					mType->info.damageImmunities |= COMBAT_HOLYDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_DAZZLED;
-				} else if (tmpStrValue == "death") {
+				}
+				else if (tmpStrValue == "death") {
 					mType->info.damageImmunities |= COMBAT_DEATHDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_CURSED;
-				} else if (tmpStrValue == "lifedrain") {
+				}
+				else if (tmpStrValue == "psychic") { //pota
+					mType->info.damageImmunities |= COMBAT_PSYCHICDAMAGE;
+				}
+				else if (tmpStrValue == "grass") { //pota
+					mType->info.damageImmunities |= COMBAT_GRASSDAMAGE;
+				}
+				else if (tmpStrValue == "normal") { //pota
+					mType->info.damageImmunities |= COMBAT_NORMALDAMAGE;
+				}
+				else if (tmpStrValue == "water") { //pota
+					mType->info.damageImmunities |= COMBAT_WATERDAMAGE;
+				}
+				else if (tmpStrValue == "flying") { //pota
+					mType->info.damageImmunities |= COMBAT_FLYINGDAMAGE;
+				}
+				else if (tmpStrValue == "poison") { //pota
+					mType->info.damageImmunities |= COMBAT_POISONDAMAGE;
+				}
+				else if (tmpStrValue == "electric") { //pota
+					mType->info.damageImmunities |= COMBAT_ELECTRICDAMAGE;
+				}
+				else if (tmpStrValue == "ground") { //pota
+					mType->info.damageImmunities |= COMBAT_GROUNDDAMAGE;
+				}
+				else if (tmpStrValue == "rock") { //pota
+					mType->info.damageImmunities |= COMBAT_ROCKDAMAGE;
+				}
+				else if (tmpStrValue == "bug") { //pota
+					mType->info.damageImmunities |= COMBAT_BUGDAMAGE;
+				}
+				else if (tmpStrValue == "dragon") { //pota
+					mType->info.damageImmunities |= COMBAT_DRAGONDAMAGE;
+				}
+				else if (tmpStrValue == "ghost") { //pota
+					mType->info.damageImmunities |= COMBAT_GHOSTDAMAGE;
+				}
+				else if (tmpStrValue == "dark") { //pota
+					mType->info.damageImmunities |= COMBAT_DARKDAMAGE;
+				}
+				else if (tmpStrValue == "steel") { //pota
+					mType->info.damageImmunities |= COMBAT_STEELDAMAGE;
+				}
+				else if (tmpStrValue == "fairy") { //pota
+					mType->info.damageImmunities |= COMBAT_FAIRYDAMAGE;
+				}
+				else if (tmpStrValue == "fighting") { //pota
+					mType->info.damageImmunities |= COMBAT_FIGHTINGDAMAGE;
+				}
+				else if (tmpStrValue == "lifedrain") {
 					mType->info.damageImmunities |= COMBAT_LIFEDRAIN;
-				} else if (tmpStrValue == "manadrain") {
+				}
+				else if (tmpStrValue == "manadrain") {
 					mType->info.damageImmunities |= COMBAT_MANADRAIN;
-				} else if (tmpStrValue == "paralyze") {
+				}
+				else if (tmpStrValue == "paralyze") {
 					mType->info.conditionImmunities |= CONDITION_PARALYZE;
-				} else if (tmpStrValue == "outfit") {
+				}
+				else if (tmpStrValue == "sleep") { //pota
+					mType->info.conditionImmunities |= CONDITION_SLEEP;
+				}
+				else if (tmpStrValue == "outfit") {
 					mType->info.conditionImmunities |= CONDITION_OUTFIT;
-				} else if (tmpStrValue == "drunk") {
+				}
+				else if (tmpStrValue == "drunk") {
 					mType->info.conditionImmunities |= CONDITION_DRUNK;
-				} else if (tmpStrValue == "invisible" || tmpStrValue == "invisibility") {
+				}
+				else if (tmpStrValue == "invisible" || tmpStrValue == "invisibility") {
 					mType->info.conditionImmunities |= CONDITION_INVISIBLE;
-				} else if (tmpStrValue == "bleed") {
+				}
+				else if (tmpStrValue == "bleed") {
 					mType->info.conditionImmunities |= CONDITION_BLEEDING;
-				} else {
+				}
+				else {
 					std::cout << "[Warning - Monsters::loadMonster] Unknown immunity name " << attr.as_string() << ". " << file << std::endl;
 				}
-			} else if ((attr = immunityNode.attribute("physical"))) {
+			}
+			else if ((attr = immunityNode.attribute("physical"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_PHYSICALDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_BLEEDING;
 				}
-			} else if ((attr = immunityNode.attribute("energy"))) {
+			}
+			else if ((attr = immunityNode.attribute("energy"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_ENERGYDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_ENERGY;
 				}
-			} else if ((attr = immunityNode.attribute("fire"))) {
+			}
+			else if ((attr = immunityNode.attribute("fire"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_FIREDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_FIRE;
 				}
-			} else if ((attr = immunityNode.attribute("poison")) || (attr = immunityNode.attribute("earth"))) {
+			}
+			else if ((attr = immunityNode.attribute("poison")) || (attr = immunityNode.attribute("earth"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_EARTHDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_POISON;
 				}
-			} else if ((attr = immunityNode.attribute("drown"))) {
+			}
+			else if ((attr = immunityNode.attribute("drown"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_DROWNDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_DROWN;
 				}
-			} else if ((attr = immunityNode.attribute("ice"))) {
+			}
+			else if ((attr = immunityNode.attribute("ice"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_ICEDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_FREEZING;
 				}
-			} else if ((attr = immunityNode.attribute("holy"))) {
+			}
+			else if ((attr = immunityNode.attribute("holy"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_HOLYDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_DAZZLED;
 				}
-			} else if ((attr = immunityNode.attribute("death"))) {
+			}
+			else if ((attr = immunityNode.attribute("death"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_DEATHDAMAGE;
 					mType->info.conditionImmunities |= CONDITION_CURSED;
 				}
-			} else if ((attr = immunityNode.attribute("lifedrain"))) {
+			}
+			else if ((attr = immunityNode.attribute("psychic"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_PSYCHICDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("grass"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_GRASSDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("normal"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_NORMALDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("water"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_WATERDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("flying"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_FLYINGDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("poison"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_POISONDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("electric"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_ELECTRICDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("ground"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_GROUNDDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("rock"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_ROCKDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("bug"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_BUGDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("dragon"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_DRAGONDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("ghost"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_GHOSTDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("dark"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_DARKDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("steel"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_STEELDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("fairy"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_FAIRYDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("fighting"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.damageImmunities |= COMBAT_FIGHTINGDAMAGE;
+				}
+			}
+			else if ((attr = immunityNode.attribute("lifedrain"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_LIFEDRAIN;
 				}
-			} else if ((attr = immunityNode.attribute("manadrain"))) {
+			}
+			else if ((attr = immunityNode.attribute("manadrain"))) {
 				if (attr.as_bool()) {
 					mType->info.damageImmunities |= COMBAT_MANADRAIN;
 				}
-			} else if ((attr = immunityNode.attribute("paralyze"))) {
+			}
+			else if ((attr = immunityNode.attribute("paralyze"))) {
 				if (attr.as_bool()) {
 					mType->info.conditionImmunities |= CONDITION_PARALYZE;
 				}
-			} else if ((attr = immunityNode.attribute("outfit"))) {
+			}
+			else if ((attr = immunityNode.attribute("sleep"))) { //pota
+				if (attr.as_bool()) {
+					mType->info.conditionImmunities |= CONDITION_SLEEP;
+				}
+			}
+			else if ((attr = immunityNode.attribute("outfit"))) {
 				if (attr.as_bool()) {
 					mType->info.conditionImmunities |= CONDITION_OUTFIT;
 				}
-			} else if ((attr = immunityNode.attribute("bleed"))) {
+			}
+			else if ((attr = immunityNode.attribute("bleed"))) {
 				if (attr.as_bool()) {
 					mType->info.conditionImmunities |= CONDITION_BLEEDING;
 				}
-			} else if ((attr = immunityNode.attribute("drunk"))) {
+			}
+			else if ((attr = immunityNode.attribute("drunk"))) {
 				if (attr.as_bool()) {
 					mType->info.conditionImmunities |= CONDITION_DRUNK;
 				}
-			} else if ((attr = immunityNode.attribute("invisible")) || (attr = immunityNode.attribute("invisibility"))) {
+			}
+			else if ((attr = immunityNode.attribute("invisible")) || (attr = immunityNode.attribute("invisibility"))) {
 				if (attr.as_bool()) {
 					mType->info.conditionImmunities |= CONDITION_INVISIBLE;
 				}
-			} else {
+			}
+			else {
 				std::cout << "[Warning - Monsters::loadMonster] Unknown immunity. " << file << std::endl;
 			}
 		}
@@ -1211,6 +1768,54 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 				mType->info.elementMap[COMBAT_HOLYDAMAGE] = pugi::cast<int32_t>(attr.value());
 			} else if ((attr = elementNode.attribute("deathPercent"))) {
 				mType->info.elementMap[COMBAT_DEATHDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("psychicPercent"))) { //pota
+				mType->info.elementMap[COMBAT_PSYCHICDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("grassPercent"))) { //pota
+				mType->info.elementMap[COMBAT_GRASSDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("normalPercent"))) { //pota
+				mType->info.elementMap[COMBAT_NORMALDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("waterPercent"))) { //pota
+				mType->info.elementMap[COMBAT_WATERDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("flyingPercent"))) { //pota
+				mType->info.elementMap[COMBAT_FLYINGDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("poisonPercent"))) { //pota
+				mType->info.elementMap[COMBAT_POISONDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("electricPercent"))) { //pota
+				mType->info.elementMap[COMBAT_ELECTRICDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("groundPercent"))) { //pota
+				mType->info.elementMap[COMBAT_GROUNDDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("rockPercent"))) { //pota
+				mType->info.elementMap[COMBAT_ROCKDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("bugPercent"))) { //pota
+				mType->info.elementMap[COMBAT_BUGDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("dragonPercent"))) { //pota
+				mType->info.elementMap[COMBAT_DRAGONDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("ghostPercent"))) { //pota
+				mType->info.elementMap[COMBAT_GHOSTDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("darkPercent"))) { //pota
+				mType->info.elementMap[COMBAT_DARKDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("steelPercent"))) { //pota
+				mType->info.elementMap[COMBAT_STEELDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("fairyPercent"))) { //pota
+				mType->info.elementMap[COMBAT_FAIRYDAMAGE] = pugi::cast<int32_t>(attr.value());
+			}
+			else if ((attr = elementNode.attribute("fightingPercent"))) { //pota
+				mType->info.elementMap[COMBAT_FIGHTINGDAMAGE] = pugi::cast<int32_t>(attr.value());
 			} else if ((attr = elementNode.attribute("drownPercent"))) {
 				mType->info.elementMap[COMBAT_DROWNDAMAGE] = pugi::cast<int32_t>(attr.value());
 			} else if ((attr = elementNode.attribute("lifedrainPercent"))) {
@@ -1282,6 +1887,9 @@ MonsterType* Monsters::loadMonster(const std::string& file, const std::string& m
 	mType->info.defenseSpells.shrink_to_fit();
 	mType->info.voiceVector.shrink_to_fit();
 	mType->info.scripts.shrink_to_fit();
+
+	mType->info.moves.shrink_to_fit(); //pota
+	mType->info.evolutions.shrink_to_fit(); //pota
 	return mType;
 }
 

@@ -23,7 +23,7 @@ local windows = {
 
 function onUse(player, item, fromPosition, target, toPosition, isHotkey)
 	local window = windows[item:getId()]
-	if not window then
+	if window == nil then
 		return false
 	end
 
@@ -45,8 +45,6 @@ function onUse(player, item, fromPosition, target, toPosition, isHotkey)
 		return false
 	end
 
-	player:addAchievementProgress("Do Not Disturb", 100)
-	player:addAchievementProgress("Let the Sunshine In", 100)
 	item:transform(window)
 	return true
 end

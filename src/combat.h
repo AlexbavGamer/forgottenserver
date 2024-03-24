@@ -77,6 +77,8 @@ struct CombatParams {
 	bool useCharges = false;
 };
 
+typedef void (*COMBATFUNC)(Creature*, Creature*, const CombatParams&, CombatDamage*);
+
 class MatrixArea
 {
 	public:
@@ -252,16 +254,27 @@ class Combat
 		static ReturnValue canDoCombat(Creature* attacker, Creature* target);
 		static void postCombatEffects(Creature* caster, const Position& pos, const CombatParams& params);
 
+		static void doCombatDefault(Creature* caster, Creature* target, const CombatParams& params);
+
+		static void doCombatHealth(Creature* caster, Creature* target, CombatDamage& damage, const CombatParams& params);
+		static void doCombatHealth(Creature* caster, const Position& position, const AreaCombat* area, CombatDamage& damage, const CombatParams& params);
+
+		static void doCombatMana(Creature* caster, Creature* target, CombatDamage& damage, const CombatParams& params);
+		static void doCombatMana(Creature* caster, const Position& position, const AreaCombat* area, CombatDamage& damage, const CombatParams& params);
+
+		static void doCombatCondition(Creature* caster, Creature* target, const CombatParams& params);
+		static void doCombatCondition(Creature* caster, const Position& position, const AreaCombat* area, const CombatParams& params);
+
+		static void doCombatDispel(Creature* caster, Creature* target, const CombatParams& params);
+		static void doCombatDispel(Creature* caster, const Position& position, const AreaCombat* area, const CombatParams& params);
+
+
 		static void addDistanceEffect(Creature* caster, const Position& fromPos, const Position& toPos, uint8_t effect);
 
-		void doCombat(Creature* caster, Creature* target) const;
-		void doCombat(Creature* caster, const Position& position) const;
-
-		static void doTargetCombat(Creature* caster, Creature* target, CombatDamage& damage, const CombatParams& params);
-		static void doAreaCombat(Creature* caster, const Position& position, const AreaCombat* area, CombatDamage& damage, const CombatParams& params);
-
 		static void checkCriticalHit(Player* caster, CombatDamage& damage);
-		static void checkLeech(Player* caster, CombatDamage& damage);
+
+		void doCombat(Creature* caster, Creature* target) const;
+		void doCombat(Creature* caster, const Position& pos) const;
 
 		bool setCallback(CallBackParam_t key);
 		CallBack* getCallback(CallBackParam_t key);
@@ -274,6 +287,9 @@ class Combat
 			return area != nullptr;
 		}
 		void addCondition(const Condition* condition) {
+			params.conditionList.emplace_front(condition);
+		}
+		void setCondition(const Condition* condition) {
 			params.conditionList.emplace_front(condition);
 		}
 		void clearConditions() {
@@ -291,6 +307,14 @@ class Combat
 	private:
 		static void combatTileEffects(const SpectatorVec& spectators, Creature* caster, Tile* tile, const CombatParams& params);
 		CombatDamage getCombatDamage(Creature* creature, Creature* target) const;
+
+		static void CombatFunc(Creature* caster, const Position& pos, const AreaCombat* area, const CombatParams& params, COMBATFUNC func, CombatDamage* data);
+
+		static void CombatHealthFunc(Creature* caster, Creature* target, const CombatParams& params, CombatDamage* data);
+		static void CombatManaFunc(Creature* caster, Creature* target, const CombatParams& params, CombatDamage* data);
+		static void CombatConditionFunc(Creature* caster, Creature* target, const CombatParams& params, CombatDamage* data);
+		static void CombatDispelFunc(Creature* caster, Creature* target, const CombatParams& params, CombatDamage* data);
+		static void CombatNullFunc(Creature* caster, Creature* target, const CombatParams& params, CombatDamage* data);
 
 		//configureable
 		CombatParams params;

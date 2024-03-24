@@ -197,6 +197,7 @@ class ProtocolGame final : public Protocol
 		void sendStats();
 		void sendBasicData();
 		void sendTextMessage(const TextMessage& message);
+		void sendAnimatedMessage(const TextMessage& message);
 		void sendReLoginWindow(uint8_t unfairFightReduction);
 
 		void sendTutorial(uint8_t tutorialId);
@@ -270,7 +271,7 @@ class ProtocolGame final : public Protocol
 
 		//messages
 		void sendModalWindow(const ModalWindow& modalWindow);
-
+		void sendExtendedOpcode(uint8_t opcode, const std::string& buffer);
 		void sendProgressbar(uint32_t id, uint32_t duration, bool ltr = true);
 
 		//Help functions

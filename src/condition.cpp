@@ -1731,3 +1731,19 @@ bool ConditionSpellGroupCooldown::startCondition(Creature* creature)
 	}
 	return true;
 }
+
+bool ConditionStatus::startCondition(Creature* creature)
+{
+	if (!Condition::startCondition(creature)) {
+		return false;
+	}
+
+	return true;
+}
+
+void ConditionStatus::addCondition(Creature* creature, const Condition* addCondition)
+{
+	if (updateCondition(addCondition)) {
+		setTicks(addCondition->getTicks());
+	}
+}

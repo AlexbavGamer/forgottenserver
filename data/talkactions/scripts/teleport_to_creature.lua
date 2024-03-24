@@ -3,11 +3,16 @@ function onSay(player, words, param)
 		return true
 	end
 
-	local target = Creature(param)
-	if target then
-		player:teleportTo(target:getPosition())
-	else
-		player:sendCancelMessage("Creature not found.")
+	local target = Player(param)
+
+	if player:getAccountType() > ACCOUNT_TYPE_GAMEMASTER then
+		target = Creature(param)
 	end
+	if target == nil then
+		player:sendCancelMessage("Player not found.")
+		return false
+	end
+
+	player:teleportTo(target:getPosition())
 	return false
 end

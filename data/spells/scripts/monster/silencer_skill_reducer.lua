@@ -1,18 +1,17 @@
-local combat = Combat()
-combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYHIT)
-combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
-combat:setArea(createCombatArea(AREA_CIRCLE2X2))
+local combat = {}
 
-local parameters = {
-	{key = CONDITION_PARAM_TICKS, value = 6 * 1000},
-	{key = CONDITION_PARAM_STAT_MAGICPOINTSPERCENT, value = nil}
-}
+for i = 20, 70 do
+	local condition = Condition(CONDITION_ATTRIBUTES)
+	condition:setParameter(CONDITION_PARAM_TICKS, 6000)
+	condition:setParameter(CONDITION_PARAM_STAT_MAGICPOINTSPERCENT, i)
+
+	combat[i] = Combat()
+	combat[i]:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYHIT)
+	combat[i]:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+	combat[i]:setArea(createCombatArea(AREA_CIRCLE2X2))
+	combat[i]:setCondition(condition)
+end
 
 function onCastSpell(creature, variant)
-	parameters[2].value = math.random(20, 70)
-
-	for _, target in ipairs(combat:getTargets(creature, variant)) do
-		target:addAttributeCondition(parameters)
-	end
-	return true
+	return combat[math.random(20, 70)]:execute(creature, variant)
 end

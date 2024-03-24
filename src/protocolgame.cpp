@@ -1435,6 +1435,16 @@ void ProtocolGame::sendTextMessage(const TextMessage& message)
 	writeToOutputBuffer(msg);
 }
 
+void ProtocolGame::sendAnimatedMessage(const TextMessage& message)
+{
+	NetworkMessage msg;
+	msg.addByte(0x84);
+	msg.addPosition(message.position);
+	msg.addByte(message.primary.color);
+	msg.addString(message.text);
+	writeToOutputBuffer(msg);
+}
+
 void ProtocolGame::sendClosePrivate(uint16_t channelId)
 {
 	NetworkMessage msg;
@@ -2916,6 +2926,8 @@ void ProtocolGame::sendSpellGroupCooldown(SpellGroup_t groupId, uint32_t time)
 	writeToOutputBuffer(msg);
 }
 
+
+
 void ProtocolGame::sendModalWindow(const ModalWindow& modalWindow)
 {
 	NetworkMessage msg;
@@ -2942,6 +2954,15 @@ void ProtocolGame::sendModalWindow(const ModalWindow& modalWindow)
 	msg.addByte(modalWindow.priority ? 0x01 : 0x00);
 
 	writeToOutputBuffer(msg);
+}
+
+void ProtocolGame::sendExtendedOpcode(uint8_t opcode, const std::string& buffer)
+{
+	NetworkMessage opcodeMessage;
+	opcodeMessage.addByte(0x32);
+	opcodeMessage.add<char>(opcode);
+	opcodeMessage.addString(buffer);
+	writeToOutputBuffer(opcodeMessage);
 }
 
 ////////////// Add common messages

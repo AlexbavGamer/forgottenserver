@@ -14,7 +14,7 @@ function onSay(player, words, param)
 
 	local tile = Tile(position)
 	local house = tile and tile:getHouse()
-	if not house then
+	if house == nil then
 		player:sendCancelMessage("You have to be looking at the door of the house you would like to buy.")
 		return false
 	end
@@ -30,7 +30,7 @@ function onSay(player, words, param)
 	end
 
 	local price = house:getTileCount() * housePrice
-	if not player:removeTotalMoney(price) then
+	if not player:removeMoney(price) then
 		player:sendCancelMessage("You do not have enough money.")
 		return false
 	end

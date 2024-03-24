@@ -79,7 +79,7 @@ class Spells final : public BaseEvents
 		LuaScriptInterface scriptInterface { "Spell Interface" };
 };
 
-using RuneSpellFunction = std::function<bool(const RuneSpell* spell, Player* player, const Position& posTo)>;
+typedef bool (RuneSpellFunction)(const RuneSpell* spell, Player* player, const Position& posTo);
 
 class BaseSpell
 {
@@ -295,6 +295,10 @@ class Spell : public BaseSpell
 			this->pzLock = pzLock;
 		}
 
+		static ReturnValue CreateIllusion(Creature* creature, const Outfit_t& outfit, int32_t time);
+		static ReturnValue CreateIllusion(Creature* creature, const std::string& name, int32_t time);
+		static ReturnValue CreateIllusion(Creature* creature, uint32_t itemId, int32_t time);
+
 		SpellType_t spellType = SPELL_UNDEFINED;
 
 	protected:
@@ -408,6 +412,7 @@ class RuneSpell final : public Action, public Spell
 		explicit RuneSpell(LuaScriptInterface* interface) : Action(interface) {}
 
 		bool configureEvent(const pugi::xml_node& node) override;
+		bool loadFunction(const pugi::xml_attribute& attr, bool isScripted) override;
 
 		ReturnValue canExecuteAction(const Player* player, const Position& toPos) override;
 		bool hasOwnErrorHandler() override {
@@ -448,6 +453,11 @@ class RuneSpell final : public Action, public Spell
 		std::string getScriptEventName() const override;
 
 		bool internalCastSpell(Creature* creature, const LuaVariant& var, bool isHotkey);
+
+		static RuneSpellFunction Illusion;
+		static RuneSpellFunction Convince;
+
+		RuneSpellFunction* runeFunction = nullptr;
 
 		uint16_t runeId = 0;
 		uint32_t charges = 0;

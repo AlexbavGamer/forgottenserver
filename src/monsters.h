@@ -65,6 +65,14 @@ struct summonBlock_t {
 	bool force = false;
 };
 
+struct evolutionBlock_t {
+	std::string name;
+	std::string itemName;
+	uint32_t level;
+	uint32_t chance;
+	uint32_t count;
+};
+
 class BaseSpell;
 struct spellBlock_t {
 	constexpr spellBlock_t() = default;
@@ -78,6 +86,8 @@ struct spellBlock_t {
 		range(other.range),
 		minCombatValue(other.minCombatValue),
 		maxCombatValue(other.maxCombatValue),
+		name(other.name), //pota
+		isTarget(other.isTarget), //pota
 		combatSpell(other.combatSpell),
 		isMelee(other.isMelee) {
 		other.spell = nullptr;
@@ -89,6 +99,8 @@ struct spellBlock_t {
 	uint32_t range = 0;
 	int32_t minCombatValue = 0;
 	int32_t maxCombatValue = 0;
+	std::string name = "none";
+	bool isTarget = false;
 	bool combatSpell = false;
 	bool isMelee = false;
 };
@@ -113,14 +125,22 @@ class MonsterType
 		std::vector<spellBlock_t> defenseSpells;
 		std::vector<summonBlock_t> summons;
 
+
+		std::vector<spellBlock_t> moves; //pota
+
+		std::vector<evolutionBlock_t> evolutions; //pota
+
 		Skulls_t skull = SKULL_NONE;
 		Outfit_t outfit = {};
 		RaceType_t race = RACE_BLOOD;
+
+		RaceType_t race2 = RACE_NONE;
 
 		LightInfo light = {};
 		uint16_t lookcorpse = 0;
 
 		uint64_t experience = 0;
+		uint64_t monsterExperience = 0; // pota
 
 		uint32_t manaCost = 0;
 		uint32_t yellChance = 0;
@@ -144,6 +164,8 @@ class MonsterType
 		int32_t changeTargetChance = 0;
 		int32_t defense = 0;
 		int32_t armor = 0;
+		uint16_t minLevel = 0;
+		uint16_t maxLevel = 0;
 
 		bool canPushItems = false;
 		bool canPushCreatures = false;
@@ -158,6 +180,20 @@ class MonsterType
 		bool canWalkOnEnergy = true;
 		bool canWalkOnFire = true;
 		bool canWalkOnPoison = true;
+		bool isPassive = false; //pota
+
+		int32_t isFlyable = 0;
+		int32_t isRideable = 0;
+		int32_t isSurfable = 0;
+		bool canTeleport = false;
+		int32_t catchChance = 0;
+		int32_t moveMagicAttackBase = 0;
+		int32_t moveMagicDefenseBase = 0;
+
+		int32_t hasShiny = 0;
+		int32_t hasMega = 0;
+		int32_t dexEntry = 0;
+		int32_t portraitId = 0;
 
 		MonstersEvent_t eventType = MONSTERS_EVENT_NONE;
 	};
@@ -177,6 +213,10 @@ class MonsterType
 		MonsterInfo info;
 
 		void loadLoot(MonsterType* monsterType, LootBlock lootblock);
+
+		void createLoot(Container* corpse, double bonus = 1.0); //pota
+		bool createLootContainer(Container* parent, const LootBlock& lootblock, double bonus = 1.0); //pota
+		std::vector<Item*> createLootItem(const LootBlock& lootBlock, double bonus = 1.0); //pota
 };
 
 class MonsterSpell
@@ -237,11 +277,23 @@ class Monsters
 		}
 		bool reload();
 
+		std::vector<std::string> getMonstersName() { //pota
+			std::vector<std::string> result = {};
+
+			for (const auto& par : monsters) {
+				result.push_back(par.first);
+			}
+
+			return result;
+		}
+
 		MonsterType* getMonsterType(const std::string& name, bool loadFromFile = true);
 		bool deserializeSpell(MonsterSpell* spell, spellBlock_t& sb, const std::string& description = "");
 
 		std::unique_ptr<LuaScriptInterface> scriptInterface;
 		std::map<std::string, MonsterType> monsters;
+
+		static uint32_t getLootRandom();
 
 	private:
 		ConditionDamage* getDamageCondition(ConditionType_t conditionType,

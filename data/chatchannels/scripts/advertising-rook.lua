@@ -1,5 +1,5 @@
 function canJoin(player)
-	return player:getVocation():getId() == VOCATION_NONE or player:getAccountType() >= ACCOUNT_TYPE_SENIORTUTOR
+	return player:getVocation():getId() == VOCATION_NONE or player:getVocation():getId() == 1 or player:getVocation():getId() == 2 or player:getVocation():getId() == 3 or player:getVocation():getId() == 4 or player:getVocation():getId() == 5 or player:getVocation():getId() == 6 or player:getAccountType() >= ACCOUNT_TYPE_SENIORTUTOR
 end
 
 local CHANNEL_ADVERTISING_ROOK = 6
@@ -32,7 +32,7 @@ function onSpeak(player, type, message)
 			type = TALKTYPE_CHANNEL_Y
 		end
 	elseif type == TALKTYPE_CHANNEL_R1 then
-		if not player:hasFlag(PlayerFlag_CanTalkRedChannel) then
+		if not getPlayerFlagValue(player, PlayerFlag_CanTalkRedChannel) then
 			type = TALKTYPE_CHANNEL_Y
 		end
 	end

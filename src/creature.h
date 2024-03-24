@@ -43,9 +43,11 @@ enum slots_t : uint8_t {
 	CONST_SLOT_FEET = 8,
 	CONST_SLOT_RING = 9,
 	CONST_SLOT_AMMO = 10,
+	CONST_SLOT_ORDER = 11, //pota
+	CONST_SLOT_INFO = 12, //pota
 
 	CONST_SLOT_FIRST = CONST_SLOT_HEAD,
-	CONST_SLOT_LAST = CONST_SLOT_AMMO,
+	CONST_SLOT_LAST = CONST_SLOT_INFO,
 };
 
 struct FindPathParams {
@@ -151,6 +153,9 @@ class Creature : virtual public Thing
 		virtual RaceType_t getRace() const {
 			return RACE_NONE;
 		}
+		virtual RaceType_t getRace2() const {
+			return RACE_NONE;
+		}
 		virtual Skulls_t getSkull() const {
 			return skull;
 		}
@@ -227,6 +232,18 @@ class Creature : virtual public Thing
 			return healthMax;
 		}
 
+		virtual uint64_t getMonsterExperience() const {
+			return monsterExperience;
+		}
+
+		uint32_t getMana() const {
+			return mana;
+		}
+
+		virtual uint32_t getMaxMana() const {
+			return 0;
+		}
+
 		const Outfit_t getCurrentOutfit() const {
 			return currentOutfit;
 		}
@@ -286,6 +303,8 @@ class Creature : virtual public Thing
 			return master;
 		}
 
+		void addSummon(Creature* creature);
+		void removeSummon(Creature* creature);
 		const std::list<Creature*>& getSummons() const {
 			return summons;
 		}
@@ -334,11 +353,17 @@ class Creature : virtual public Thing
 		}
 
 		virtual void changeHealth(int32_t healthChange, bool sendHealthChange = true);
+		virtual void changeMana(int32_t manaChange);
 
 		void gainHealth(Creature* healer, int32_t healthGain);
 		virtual void drainHealth(Creature* attacker, int32_t damage);
+		virtual void drainMana(Creature* attacker, int32_t manaLoss);
 
 		virtual bool challengeCreature(Creature*) {
+			return false;
+		}
+
+		virtual bool convinceCreature(Creature*) {
 			return false;
 		}
 
@@ -390,6 +415,7 @@ class Creature : virtual public Thing
 
 		virtual void onCreatureSay(Creature*, SpeakClasses, const std::string&) {}
 
+		virtual void onCreatureConvinced(const Creature*, const Creature*) {}
 		virtual void onPlacedCreature() {}
 
 		virtual bool getCombatValues(int32_t&, int32_t&) {
@@ -505,9 +531,12 @@ class Creature : virtual public Thing
 		uint32_t blockTicks = 0;
 		uint32_t lastStepCost = 1;
 		uint32_t baseSpeed = 220;
+		uint32_t mana = 0;
 		int32_t varSpeed = 0;
 		int32_t health = 1000;
 		int32_t healthMax = 1000;
+
+		uint64_t monsterExperience = 0;
 
 		Outfit_t currentOutfit;
 		Outfit_t defaultOutfit;

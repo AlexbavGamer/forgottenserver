@@ -22,6 +22,7 @@
 #include "iologindata.h"
 #include "configmanager.h"
 #include "game.h"
+#include <format>
 
 extern ConfigManager g_config;
 extern Game g_game;

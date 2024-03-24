@@ -68,8 +68,8 @@ bool Creature::canSee(const Position& myPos, const Position& pos, int32_t viewRa
 	}
 
 	const int_fast32_t offsetz = myPos.getZ() - pos.getZ();
-	return (pos.getX() >= myPos.getX() - viewRangeX + offsetz) && (pos.getX() <= myPos.getX() + viewRangeX + offsetz)
-		&& (pos.getY() >= myPos.getY() - viewRangeY + offsetz) && (pos.getY() <= myPos.getY() + viewRangeY + offsetz);
+	return (pos.getX() >= myPos.getX() - Map::maxViewportX + offsetz) && (pos.getX() <= myPos.getX() + Map::maxViewportX + offsetz) //pota
+		&& (pos.getY() >= myPos.getY() - Map::maxViewportY + offsetz) && (pos.getY() <= myPos.getY() + Map::maxViewportY + offsetz);
 }
 
 bool Creature::canSee(const Position& pos) const
@@ -475,6 +475,12 @@ void Creature::onCreatureMove(Creature* creature, const Tile* newTile, const Pos
 			//check if any of our summons is out of range (+/- 2 floors or 30 tiles away)
 			std::forward_list<Creature*> despawnList;
 			for (Creature* summon : summons) {
+				if (summon->hasCondition(CONDITION_MOVING)) {
+					summon->removeCondition(CONDITION_MOVING);
+				}
+			}
+
+			for (Creature* summon : summons) {
 				const Position& pos = summon->getPosition();
 				if (Position::getDistanceZ(newPos, pos) > 2 || (std::max<int32_t>(Position::getDistanceX(newPos, pos), Position::getDistanceY(newPos, pos)) > 30)) {
 					despawnList.push_front(summon);
@@ -734,6 +740,11 @@ bool Creature::dropCorpse(Creature* lastHitCreature, Creature* mostDamageCreatur
 		if (corpse) {
 			dropLoot(corpse->getContainer(), lastHitCreature);
 		}
+
+		//scripting event - onPostDeath
+		for (CreatureEvent* postDeathEvent : getCreatureEvents(CREATURE_EVENT_POSTDEATH)) { //pota
+			postDeathEvent->executeOnPostDeath(this, corpse, lastHitCreature, mostDamageCreature, lastHitUnjustified, mostDamageUnjustified);
+		}
 	}
 
 	return true;
@@ -768,6 +779,16 @@ void Creature::changeHealth(int32_t healthChange, bool sendHealthChange/* = true
 	}
 }
 
+void Creature::changeMana(int32_t manaChange)
+{
+	if (manaChange > 0) {
+		mana += std::min<int32_t>(manaChange, getMaxMana() - mana);
+	}
+	else {
+		mana = std::max <int32_t>(0, mana + manaChange);
+	}
+}
+
 void Creature::gainHealth(Creature* healer, int32_t healthGain)
 {
 	changeHealth(healthGain);
@@ -782,6 +803,16 @@ void Creature::drainHealth(Creature* attacker, int32_t damage)
 
 	if (attacker) {
 		attacker->onAttackedCreatureDrainHealth(this, damage);
+	}
+}
+
+void Creature::drainMana(Creature* attacker, int32_t manaLoss)
+{
+	onAttacked();
+	changeMana(-manaLoss);
+
+	if (attacker) {
+		addDamagePoints(attacker, manaLoss);
 	}
 }
 
@@ -1085,8 +1116,8 @@ void Creature::onGainExperience(uint64_t gainExp, Creature* target)
 	if (gainExp == 0 || !master) {
 		return;
 	}
-
-	gainExp /= 2;
+	//do not give exp to summons
+	//gainExp /= 2;
 	master->onGainExperience(gainExp, target);
 
 	SpectatorVec spectators;
@@ -1094,6 +1125,9 @@ void Creature::onGainExperience(uint64_t gainExp, Creature* target)
 	if (spectators.empty()) {
 		return;
 	}
+
+	if (this->getMonster() || master->getMonster())
+		return;
 
 	TextMessage message(MESSAGE_EXPERIENCE_OTHERS, ucfirst(getNameDescription()) + " gained " + std::to_string(gainExp) + (gainExp != 1 ? " experience points." : " experience point."));
 	message.position = position;
@@ -1126,6 +1160,27 @@ bool Creature::setMaster(Creature* newMaster) {
 		}
 	}
 	return true;
+}
+
+void Creature::addSummon(Creature* creature)
+{
+	creature->setDropLoot(false);
+	creature->setSkillLoss(false);
+	creature->setMaster(this);
+	creature->incrementReferenceCounter();
+	summons.push_back(creature);
+}
+
+void Creature::removeSummon(Creature* creature)
+{
+	auto cit = std::find(summons.begin(), summons.end(), creature);
+	if (cit != summons.end()) {
+		creature->setDropLoot(false);
+		creature->setSkillLoss(true);
+		creature->setMaster(nullptr);
+		creature->decrementReferenceCounter();
+		summons.erase(cit);
+	}
 }
 
 bool Creature::addCondition(Condition* condition, bool force/* = false*/)
