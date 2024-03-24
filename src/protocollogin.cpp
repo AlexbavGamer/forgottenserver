@@ -109,13 +109,14 @@ void ProtocolLogin::getCharacterList(const std::string& accountName, const std::
 
 	output->addByte(size);
 	for (uint8_t i = 0; i < size; i++) {
-		const std::string& character = account.characters[i];
+		auto& character = account.characters[i];
 		if (g_config.getBoolean(ConfigManager::ONLINE_OFFLINE_CHARLIST)) {
-			output->addByte(g_game.getPlayerByName(character) ? 1 : 0);
+			output->addByte(g_game.getPlayerByName(character.name) ? 1 : 0);
 		} else {
 			output->addByte(0);
 		}
-		output->addString(character);
+		output->addString(character.name);
+		output->addOutfit(character.outfit);
 	}
 
 	//Add premium days

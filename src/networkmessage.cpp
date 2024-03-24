@@ -95,6 +95,22 @@ void NetworkMessage::addPosition(const Position& pos)
 	addByte(pos.z);
 }
 
+void NetworkMessage::addOutfit(const Outfit_t& outfit)
+{
+	add<uint16_t>(outfit.lookType);
+
+	if (outfit.lookType != 0) {
+		addByte(outfit.lookHead);
+		addByte(outfit.lookBody);
+		addByte(outfit.lookLegs);
+		addByte(outfit.lookFeet);
+		addByte(outfit.lookAddons);
+	}
+	else {
+		addItemId(outfit.lookTypeEx);
+	}
+}
+
 void NetworkMessage::addItem(uint16_t id, uint8_t count, bool withDescription)
 {
 	const ItemType& it = Item::items[id];

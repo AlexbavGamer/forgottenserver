@@ -105,12 +105,24 @@ bool IOLoginData::loginserverAuthentication(const std::string& name, const std::
 	account.lastDay = result->getNumber<time_t>("lastday");
 
 	query.str(std::string());
-	query << "SELECT `name`, `deletion` FROM `players` WHERE `account_id` = " << account.id;
+	query << "SELECT `name`, `looktype`,`lookhead`, `lookbody`, `looklegs`, `lookfeet`, `lookaddons`, `deletion` FROM `players` WHERE `account_id` = " << account.id;
 	result = db.storeQuery(query.str());
 	if (result) {
 		do {
-			if (result->getNumber<uint64_t>("deletion") == 0) {
-				account.characters.push_back(result->getString("name"));
+			if (result->getNumber<uint64_t>("deletion") == 0)
+			{
+				Account::CharacterData charData;
+
+				charData.name = result->getString("name");
+
+				charData.outfit.lookType = result->getNumber<uint16_t>("looktype");
+				charData.outfit.lookHead = result->getNumber<uint16_t>("lookhead");
+				charData.outfit.lookBody = result->getNumber<uint16_t>("lookbody");
+				charData.outfit.lookLegs = result->getNumber<uint16_t>("looklegs");
+				charData.outfit.lookFeet = result->getNumber<uint16_t>("lookfeet");
+				charData.outfit.lookAddons = result->getNumber<uint16_t>("lookaddons");
+
+				account.characters.push_back(charData);
 			}
 		} while (result->next());
 		std::sort(account.characters.begin(), account.characters.end());

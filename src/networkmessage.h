@@ -27,6 +27,7 @@ class Creature;
 class Player;
 struct Position;
 class RSA;
+struct Outfit_t;
 
 class NetworkMessage
 {
@@ -112,6 +113,7 @@ class NetworkMessage
 
 		// write functions for complex types
 		void addPosition(const Position& pos);
+		void addOutfit(const Outfit_t& outfit);
 		void addItem(uint16_t id, uint8_t count, bool withDescription = false);
 		void addItem(const Item* item, bool withDescription = false);
 		void addItemId(uint16_t itemId);

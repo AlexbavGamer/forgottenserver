@@ -22,8 +22,18 @@
 
 #include "enums.h"
 
+
 struct Account {
-	std::vector<std::string> characters;
+	struct CharacterData {
+		std::string name;
+		Outfit_t outfit;
+
+		bool operator<(const CharacterData& other) const {
+			return name < other.name;
+		}
+	};
+
+	std::vector<CharacterData> characters;
 	std::string name;
 	std::string key;
 	time_t lastDay = 0;
@@ -31,7 +41,15 @@ struct Account {
 	uint16_t premiumDays = 0;
 	AccountType_t accountType = ACCOUNT_TYPE_NORMAL;
 
-	Account() = default;
+	Account()
+		: characters{},
+		name{},
+		key{},
+		lastDay{ 0 },
+		id{ 0 },
+		premiumDays{ 0 },
+		accountType{ ACCOUNT_TYPE_NORMAL }
+	{}
 };
 
 #endif
